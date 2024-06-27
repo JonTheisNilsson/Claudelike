@@ -2,11 +2,13 @@
 import pygame
 from constants import GRID_CELL_SIZE, BLUE, RED, BLACK, WHITE, MAP_SIZE
 
+MESSAGE_BOX_HEIGHT = 100  # Define the height of the message box
+
 def get_camera_offset(player_pos, window_size):
     offset_x = player_pos[0] * GRID_CELL_SIZE - window_size[0] // 2
-    offset_y = player_pos[1] * GRID_CELL_SIZE - window_size[1] // 2
+    offset_y = player_pos[1] * GRID_CELL_SIZE - (window_size[1] - MESSAGE_BOX_HEIGHT) // 2
     offset_x = max(0, min(offset_x, MAP_SIZE[0] * GRID_CELL_SIZE - window_size[0]))
-    offset_y = max(0, min(offset_y, MAP_SIZE[1] * GRID_CELL_SIZE - window_size[1]))
+    offset_y = max(0, min(offset_y, MAP_SIZE[1] * GRID_CELL_SIZE - (window_size[1] - MESSAGE_BOX_HEIGHT)))
     return offset_x, offset_y
 
 class MessageLog:
@@ -22,7 +24,7 @@ class MessageLog:
 message_log = MessageLog()
 
 def draw_message_box(surface, width, height):
-    box_height = 100
+    box_height = MESSAGE_BOX_HEIGHT
     box_width = width
     box_x = 0
     box_y = height - box_height
@@ -46,72 +48,73 @@ def draw_game(surface, game_map, player, camera_offset):
     start_x = max(0, camera_offset[0] // GRID_CELL_SIZE)
     end_x = min(MAP_SIZE[0], (camera_offset[0] + surface.get_width()) // GRID_CELL_SIZE + 1)
     start_y = max(0, camera_offset[1] // GRID_CELL_SIZE)
-    end_y = min(MAP_SIZE[1], (camera_offset[1] + surface.get_height()) // GRID_CELL_SIZE + 1)
+    end_y = min(MAP_SIZE[1], (camera_offset[1] + surface.get_height() - MESSAGE_BOX_HEIGHT) // GRID_CELL_SIZE + 1)
 
     for x in range(start_x, end_x):
         for y in range(start_y, end_y):
+            screen_x = x * GRID_CELL_SIZE - camera_offset[0]
+            screen_y = y * GRID_CELL_SIZE - camera_offset[1]
+            
+            if screen_y + GRID_CELL_SIZE > surface.get_height() - MESSAGE_BOX_HEIGHT:
+                continue
+
             if game_map.is_wall(x, y):
-                pygame.draw.rect(surface, BLUE, (
-                    x * GRID_CELL_SIZE - camera_offset[0],
-                    y * GRID_CELL_SIZE - camera_offset[1],
-                    GRID_CELL_SIZE, GRID_CELL_SIZE
-                ))
+                pygame.draw.rect(surface, BLUE, (screen_x, screen_y, GRID_CELL_SIZE, GRID_CELL_SIZE))
             elif game_map.is_stairs(x, y):
                 stairs_char = game_map.get_stairs_char(x, y)
                 color = (255, 255, 0)  # Yellow color for stairs
                 if stairs_char == '<':
                     pygame.draw.polygon(surface, color, [
-                        ((x + 0.5) * GRID_CELL_SIZE - camera_offset[0], (y + 0.2) * GRID_CELL_SIZE - camera_offset[1]),
-                        ((x + 0.2) * GRID_CELL_SIZE - camera_offset[0], (y + 0.8) * GRID_CELL_SIZE - camera_offset[1]),
-                        ((x + 0.8) * GRID_CELL_SIZE - camera_offset[0], (y + 0.8) * GRID_CELL_SIZE - camera_offset[1])
+                        (screen_x + GRID_CELL_SIZE // 2, screen_y + GRID_CELL_SIZE // 5),
+                        (screen_x + GRID_CELL_SIZE // 5, screen_y + GRID_CELL_SIZE * 4 // 5),
+                        (screen_x + GRID_CELL_SIZE * 4 // 5, screen_y + GRID_CELL_SIZE * 4 // 5)
                     ])
                 elif stairs_char == '>':
                     pygame.draw.polygon(surface, color, [
-                        ((x + 0.5) * GRID_CELL_SIZE - camera_offset[0], (y + 0.8) * GRID_CELL_SIZE - camera_offset[1]),
-                        ((x + 0.2) * GRID_CELL_SIZE - camera_offset[0], (y + 0.2) * GRID_CELL_SIZE - camera_offset[1]),
-                        ((x + 0.8) * GRID_CELL_SIZE - camera_offset[0], (y + 0.2) * GRID_CELL_SIZE - camera_offset[1])
+                        (screen_x + GRID_CELL_SIZE // 2, screen_y + GRID_CELL_SIZE * 4 // 5),
+                        (screen_x + GRID_CELL_SIZE // 5, screen_y + GRID_CELL_SIZE // 5),
+                        (screen_x + GRID_CELL_SIZE * 4 // 5, screen_y + GRID_CELL_SIZE // 5)
                     ])
 
     # Draw items
     for x, y, item in game_map.items:
+        screen_x = x * GRID_CELL_SIZE - camera_offset[0]
+        screen_y = y * GRID_CELL_SIZE - camera_offset[1]
+        
+        if screen_y + GRID_CELL_SIZE > surface.get_height() - MESSAGE_BOX_HEIGHT:
+            continue
+
         item_color = (255, 255, 0)  # Yellow for items
-        pygame.draw.rect(surface, item_color, (
-            x * GRID_CELL_SIZE - camera_offset[0],
-            y * GRID_CELL_SIZE - camera_offset[1],
-            GRID_CELL_SIZE, GRID_CELL_SIZE
-        ))
+        pygame.draw.rect(surface, item_color, (screen_x, screen_y, GRID_CELL_SIZE, GRID_CELL_SIZE))
         font = pygame.font.Font(None, 24)
         text = font.render('?', True, BLACK)  # Use '?' to represent items
-        text_rect = text.get_rect(center=(
-            x * GRID_CELL_SIZE - camera_offset[0] + GRID_CELL_SIZE // 2,
-            y * GRID_CELL_SIZE - camera_offset[1] + GRID_CELL_SIZE // 2
-        ))
+        text_rect = text.get_rect(center=(screen_x + GRID_CELL_SIZE // 2, screen_y + GRID_CELL_SIZE // 2))
         surface.blit(text, text_rect)
 
     # Draw NPCs
     for npc in game_map.npcs:
-        pygame.draw.rect(surface, npc.color, (
-            npc.x * GRID_CELL_SIZE - camera_offset[0],
-            npc.y * GRID_CELL_SIZE - camera_offset[1],
-            GRID_CELL_SIZE, GRID_CELL_SIZE
-        ))
+        screen_x = npc.x * GRID_CELL_SIZE - camera_offset[0]
+        screen_y = npc.y * GRID_CELL_SIZE - camera_offset[1]
+        
+        if screen_y + GRID_CELL_SIZE > surface.get_height() - MESSAGE_BOX_HEIGHT:
+            continue
+
+        pygame.draw.rect(surface, npc.color, (screen_x, screen_y, GRID_CELL_SIZE, GRID_CELL_SIZE))
         # Draw NPC character
         font = pygame.font.Font(None, 24)
         text = font.render(npc.char, True, BLACK)  # Black text for contrast
-        text_rect = text.get_rect(center=(
-            npc.x * GRID_CELL_SIZE - camera_offset[0] + GRID_CELL_SIZE // 2,
-            npc.y * GRID_CELL_SIZE - camera_offset[1] + GRID_CELL_SIZE // 2
-        ))
+        text_rect = text.get_rect(center=(screen_x + GRID_CELL_SIZE // 2, screen_y + GRID_CELL_SIZE // 2))
         surface.blit(text, text_rect)
 
     # Draw player
-    font = pygame.font.Font(None, 24)
-    player_text = font.render(player.char, True, player.color)
-    player_rect = player_text.get_rect(center=(
-        player.pos[0] * GRID_CELL_SIZE - camera_offset[0] + GRID_CELL_SIZE // 2,
-        player.pos[1] * GRID_CELL_SIZE - camera_offset[1] + GRID_CELL_SIZE // 2
-    ))
-    surface.blit(player_text, player_rect)
+    player_screen_x = player.pos[0] * GRID_CELL_SIZE - camera_offset[0]
+    player_screen_y = player.pos[1] * GRID_CELL_SIZE - camera_offset[1]
+    
+    if player_screen_y + GRID_CELL_SIZE <= surface.get_height() - MESSAGE_BOX_HEIGHT:
+        font = pygame.font.Font(None, 24)
+        player_text = font.render(player.char, True, player.color)
+        player_rect = player_text.get_rect(center=(player_screen_x + GRID_CELL_SIZE // 2, player_screen_y + GRID_CELL_SIZE // 2))
+        surface.blit(player_text, player_rect)
 
     # Draw player's hitpoints
     hp_text = f"HP: {player.hitpoints}/{player.max_hitpoints}"
