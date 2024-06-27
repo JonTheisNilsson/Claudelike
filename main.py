@@ -21,7 +21,7 @@ def get_safe_start_position(game_map):
 
 def change_map(player, current_map, direction):
     # Save current map
-    current_map.save_to_file(f"map_level_{current_map.level}.json")
+    MapHandler.save_map(current_map, f"map_level_{current_map.level}.json")
 
     if direction == "up":
         new_level = current_map.level + 1
@@ -83,6 +83,9 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode(INITIAL_WINDOW_SIZE, pygame.RESIZABLE)
     pygame.display.set_caption("Claudelike")
+
+    # Clear the map folder at the start of the game
+    MapHandler.clear_map_folder()
 
     current_map = GameMap()
     current_map.level = 0
