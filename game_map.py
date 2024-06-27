@@ -19,6 +19,8 @@ class GameMap:
             self.room_centers = [tuple(center) for center in map_data["room_centers"]]
 
         self.npcs = []
+        self.items = []
+        self.level = 0
 
     def _create_outer_walls(self):
         for x in range(MAP_SIZE[0]):
@@ -82,8 +84,7 @@ class GameMap:
             self.stairs_up = self.stairs_down = self.room_centers[0]
 
     def spawn_npcs(self, num_slimes=5, num_goblins=3, num_ghosts=2):
-        empty_cells = [(x, y) for x in range(MAP_SIZE[0]) for y in range(MAP_SIZE[1]) 
-                       if self.map[x][y] == 0 and (x, y) not in [self.stairs_up, self.stairs_down]]
+        empty_cells = self.get_empty_cells()
         
         for _ in range(num_slimes):
             if empty_cells:
@@ -127,3 +128,13 @@ class GameMap:
     def load_from_file(cls, filename):
         map_data = MapHandler.load_map(filename)
         return cls(map_data)
+
+    def get_empty_cells(self):
+        return [(x, y) for x in range(MAP_SIZE[0]) for y in range(MAP_SIZE[1]) 
+                if self.map[x][y] == 0 and not self.is_stairs(x, y) and 
+                (x, y) not in [(npc.x, npc.y) for npc in self.npcs] and
+                (x, y) not in [(item[0], item[1]) for item in self.items]]
+
+    def get_random_empty_cell(self):
+        empty_cells = self.get_empty_cells()
+        return random.choice(empty_cells) if empty_cells else None

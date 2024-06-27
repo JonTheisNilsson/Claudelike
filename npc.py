@@ -37,9 +37,15 @@ class NPC:
 
     def take_damage(self, damage):
         self.hitpoints = max(0, self.hitpoints - damage)
+        return damage  # Return the actual damage dealt
 
     def is_alive(self):
         return self.hitpoints > 0
+
+    def attack(self, target):
+        damage = self.attack_power
+        actual_damage = target.take_damage(damage)
+        return actual_damage
 
 class Slime(NPC):
     def __init__(self, x, y):
