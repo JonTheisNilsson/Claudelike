@@ -1,0 +1,545 @@
+Filename: constants.py
+Content:
+# constants.py
+INITIAL_WINDOW_SIZE = (800, 600)
+GRID_CELL_SIZE = 20
+MAP_SIZE = (75, 75)
+MOVE_DELAY = 150  # Milliseconds to wait before continuous movement
+
+
+
+# Colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+
+Filename: game_map.py
+Content:
+# game_map.py
+import random
+from constants import MAP_SIZE
+from npc import Slime, Goblin, Ghost
+from map_handler import MapHandler
+
+class GameMap:
+    def __init__(self, map_data=None):
+        if map_data is None:
+            self.map = [[0 for _ in range(MAP_SIZE[1])] for _ in range(MAP_SIZE[0])]
+            self._create_outer_walls()
+            self.room_centers = self._create_rooms()
+            self._create_corridors()
+            self._place_stairs()
+        else:
+            self.map = map_data["walls"]
+            self.stairs_up = tuple(map_data["stairs_up"]) if map_data["stairs_up"] else None
+            self.stairs_down = tuple(map_data["stairs_down"]) if map_data["stairs_down"] else None
+            self.room_centers = [tuple(center) for center in map_data["room_centers"]]
+
+        self.npcs = []
+
+    def _create_outer_walls(self):
+        for x in range(MAP_SIZE[0]):
+            self.map[x][0] = 1
+            self.map[x][MAP_SIZE[1]-1] = 1
+        for y in range(MAP_SIZE[1]):
+            self.map[0][y] = 1
+            self.map[MAP_SIZE[0]-1][y] = 1
+
+    def _create_rooms(self):
+        room_centers = []
+        for _ in range(10):  # Create 10 rooms
+            room_width = random.randint(5, 15)
+            room_height = random.randint(5, 15)
+            x = random.randint(1, MAP_SIZE[0] - room_width - 1)
+            y = random.randint(1, MAP_SIZE[1] - room_height - 1)
+            
+            # Check if the room overlaps with existing rooms
+            overlap = any(
+                abs(x - cx) < room_width and abs(y - cy) < room_height
+                for cx, cy in room_centers
+            )
+            
+            if not overlap:
+                for i in range(x, x + room_width):
+                    for j in range(y, y + room_height):
+                        if i == x or i == x + room_width - 1 or j == y or j == y + room_height - 1:
+                            self.map[i][j] = 1  # Wall
+                        else:
+                            self.map[i][j] = 0  # Floor
+                room_centers.append((x + room_width // 2, y + room_height // 2))
+        
+        return room_centers
+
+    def _create_corridors(self):
+        for i in range(len(self.room_centers) - 1):
+            x1, y1 = self.room_centers[i]
+            x2, y2 = self.room_centers[i + 1]
+            
+            # Horizontal corridor
+            for x in range(min(x1, x2), max(x1, x2) + 1):
+                self.map[x][y1] = 0
+            
+            # Vertical corridor
+            for y in range(min(y1, y2), max(y1, y2) + 1):
+                self.map[x2][y] = 0
+
+    def _place_stairs(self):
+        empty_cells = [(x, y) for x in range(MAP_SIZE[0]) for y in range(MAP_SIZE[1]) 
+                       if self.map[x][y] == 0 and (x, y) not in self.room_centers]
+        
+        if empty_cells:
+            self.stairs_up = random.choice(empty_cells)
+            empty_cells.remove(self.stairs_up)
+            if empty_cells:
+                self.stairs_down = random.choice(empty_cells)
+            else:
+                self.stairs_down = self.stairs_up  # Fallback if no other empty cells
+        else:
+            # Fallback if no empty cells at all
+            self.stairs_up = self.stairs_down = self.room_centers[0]
+
+    def spawn_npcs(self, num_slimes=5, num_goblins=3, num_ghosts=2):
+        empty_cells = [(x, y) for x in range(MAP_SIZE[0]) for y in range(MAP_SIZE[1]) 
+                       if self.map[x][y] == 0 and (x, y) not in [self.stairs_up, self.stairs_down]]
+        
+        for _ in range(num_slimes):
+            if empty_cells:
+                x, y = random.choice(empty_cells)
+                self.npcs.append(Slime(x, y))
+                empty_cells.remove((x, y))
+        
+        for _ in range(num_goblins):
+            if empty_cells:
+                x, y = random.choice(empty_cells)
+                self.npcs.append(Goblin(x, y))
+                empty_cells.remove((x, y))
+        
+        for _ in range(num_ghosts):
+            if empty_cells:
+                x, y = random.choice(empty_cells)
+                self.npcs.append(Ghost(x, y))
+                empty_cells.remove((x, y))
+
+    def update_npcs(self):
+        for npc in self.npcs:
+            npc.update(self)
+
+    def is_wall(self, x, y):
+        return self.map[x][y] == 1
+
+    def is_stairs(self, x, y):
+        return (x, y) == self.stairs_up or (x, y) == self.stairs_down
+
+    def get_stairs_char(self, x, y):
+        if (x, y) == self.stairs_up:
+            return '<'
+        elif (x, y) == self.stairs_down:
+            return '>'
+        return None
+
+    def save_to_file(self, filename):
+        MapHandler.save_map(self, filename)
+
+    @classmethod
+    def load_from_file(cls, filename):
+        map_data = MapHandler.load_map(filename)
+        return cls(map_data)
+
+Filename: keymap.py
+Content:
+# keymap.py
+import pygame
+
+# Movement keys
+MOVE_UP = pygame.K_KP8
+MOVE_DOWN = pygame.K_KP2
+MOVE_LEFT = pygame.K_KP4
+MOVE_RIGHT = pygame.K_KP6
+MOVE_UP_LEFT = pygame.K_KP7
+MOVE_UP_RIGHT = pygame.K_KP9
+MOVE_DOWN_LEFT = pygame.K_KP1
+MOVE_DOWN_RIGHT = pygame.K_KP3
+
+# Alternative movement keys (arrow keys)
+ALT_MOVE_UP = pygame.K_UP
+ALT_MOVE_DOWN = pygame.K_DOWN
+ALT_MOVE_LEFT = pygame.K_LEFT
+ALT_MOVE_RIGHT = pygame.K_RIGHT
+
+# Wait key
+WAIT = pygame.K_KP5  # Numpad 5 for wait
+
+MOVE_DIRECTIONS = {
+    MOVE_UP: (0, -1),
+    MOVE_DOWN: (0, 1),
+    MOVE_LEFT: (-1, 0),
+    MOVE_RIGHT: (1, 0),
+    MOVE_UP_LEFT: (-1, -1),
+    MOVE_UP_RIGHT: (1, -1),
+    MOVE_DOWN_LEFT: (-1, 1),
+    MOVE_DOWN_RIGHT: (1, 1),
+    ALT_MOVE_UP: (0, -1),
+    ALT_MOVE_DOWN: (0, 1),
+    ALT_MOVE_LEFT: (-1, 0),
+    ALT_MOVE_RIGHT: (1, 0)
+}
+
+Filename: main.py
+Content:
+# main.py
+import pygame
+import sys
+from constants import INITIAL_WINDOW_SIZE, MOVE_DELAY, MAP_SIZE
+from game_map import GameMap
+from player import Player
+from rendering import get_camera_offset, draw_game
+from keymap import MOVE_DIRECTIONS, WAIT
+from map_handler import MapHandler
+
+def get_safe_start_position(game_map):
+    if game_map.room_centers:
+        return game_map.room_centers[0]
+    for x in range(MAP_SIZE[0]):
+        for y in range(MAP_SIZE[1]):
+            if not game_map.is_wall(x, y):
+                return (x, y)
+    return (MAP_SIZE[0] // 2, MAP_SIZE[1] // 2)
+
+def change_map(player, current_map, direction):
+    # Save current map
+    current_map.save_to_file(f"map_level_{current_map.level}.json")
+
+    if direction == "up":
+        new_level = current_map.level + 1
+    else:
+        new_level = current_map.level - 1
+
+    try:
+        new_map = GameMap.load_from_file(f"map_level_{new_level}.json")
+    except FileNotFoundError:
+        new_map = GameMap()  # Generate a new map if file doesn't exist
+    
+    new_map.level = new_level
+    
+    # Place player at appropriate stairs or a safe position
+    if direction == "up":
+        if new_map.stairs_down:
+            player.pos = list(new_map.stairs_down)
+        else:
+            player.pos = list(get_safe_start_position(new_map))
+    else:
+        if new_map.stairs_up:
+            player.pos = list(new_map.stairs_up)
+        else:
+            player.pos = list(get_safe_start_position(new_map))
+    
+    return new_map
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode(INITIAL_WINDOW_SIZE, pygame.RESIZABLE)
+    pygame.display.set_caption("Claudelike")  # Set the new game title
+
+    current_map = GameMap()
+    current_map.level = 0  # Set the starting floor to 0
+    current_map.spawn_npcs()
+    
+    start_pos = get_safe_start_position(current_map)
+    player = Player(start_pos)
+
+    clock = pygame.time.Clock()
+    
+    last_move_time = 0
+    
+    while True:
+        current_time = pygame.time.get_ticks()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.VIDEORESIZE:
+                screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+        
+        # Handle movement and waiting
+        keys = pygame.key.get_pressed()
+        moved = False
+        
+        if current_time - last_move_time >= MOVE_DELAY:
+            if keys[WAIT]:
+                current_map.update_npcs()
+                moved = True
+                last_move_time = current_time
+            else:
+                for key, direction in MOVE_DIRECTIONS.items():
+                    if keys[key]:
+                        old_pos = player.pos.copy()
+                        player.move(*direction, current_map)
+                        current_map.update_npcs()
+                        if player.pos != old_pos:
+                            moved = True
+                            if current_map.is_stairs(player.pos[0], player.pos[1]):
+                                stairs_char = current_map.get_stairs_char(player.pos[0], player.pos[1])
+                                if stairs_char == '<':
+                                    print("You climb up the stairs...")
+                                    current_map = change_map(player, current_map, "up")
+                                elif stairs_char == '>':
+                                    print("You descend down the stairs...")
+                                    current_map = change_map(player, current_map, "down")
+                        
+                        last_move_time = current_time
+                        break
+        
+        camera_offset = get_camera_offset(player.pos, screen.get_size())
+        draw_game(screen, current_map, player, camera_offset)
+        pygame.display.flip()
+        clock.tick(60)
+
+if __name__ == "__main__":
+    main()
+
+Filename: map_handler.py
+Content:
+# map_handler.py
+import json
+from constants import MAP_SIZE
+
+class MapHandler:
+    @staticmethod
+    def save_map(game_map, filename):
+        map_data = {
+            "walls": game_map.map,
+            "stairs_up": game_map.stairs_up,
+            "stairs_down": game_map.stairs_down,
+            "room_centers": game_map.room_centers
+        }
+        with open(filename, 'w') as f:
+            json.dump(map_data, f)
+
+    @staticmethod
+    def load_map(filename):
+        with open(filename, 'r') as f:
+            map_data = json.load(f)
+        return map_data
+
+    @staticmethod
+    def create_empty_map():
+        return {
+            "walls": [[0 for _ in range(MAP_SIZE[1])] for _ in range(MAP_SIZE[0])],
+            "stairs_up": None,
+            "stairs_down": None,
+            "room_centers": []
+        }
+
+Filename: npc.py
+Content:
+# npc.py
+import random
+from constants import MAP_SIZE
+
+class NPC:
+    def __init__(self, x, y, char='N', color=(255, 255, 0), hitpoints=20, attack_power=5):
+        self.x = x
+        self.y = y
+        self.char = char
+        self.color = color
+        self.hitpoints = hitpoints
+        self.max_hitpoints = hitpoints
+        self.attack_power = attack_power
+        self.movement_counter = 0
+        self.direction = self.get_random_direction()
+
+    def get_random_direction(self):
+        return random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])
+
+    def move(self, game_map):
+        self.movement_counter += 1
+        if self.movement_counter >= 3:  # Change direction every 3 moves
+            self.direction = self.get_random_direction()
+            self.movement_counter = 0
+
+        new_x, new_y = self.x + self.direction[0], self.y + self.direction[1]
+        if (0 <= new_x < MAP_SIZE[0] and 
+            0 <= new_y < MAP_SIZE[1] and 
+            not game_map.is_wall(new_x, new_y)):
+            self.x, self.y = new_x, new_y
+        else:
+            # If blocked, try a random direction
+            self.direction = self.get_random_direction()
+
+    def update(self, game_map):
+        self.move(game_map)
+
+    def take_damage(self, damage):
+        self.hitpoints = max(0, self.hitpoints - damage)
+
+    def is_alive(self):
+        return self.hitpoints > 0
+
+class Slime(NPC):
+    def __init__(self, x, y):
+        super().__init__(x, y, char='S', color=(0, 255, 0), hitpoints=15, attack_power=3)
+
+class Goblin(NPC):
+    def __init__(self, x, y):
+        super().__init__(x, y, char='G', color=(255, 0, 0), hitpoints=25, attack_power=7)
+    
+    def move(self, game_map):
+        # Goblins move twice as fast
+        for _ in range(2):
+            super().move(game_map)
+
+class Ghost(NPC):
+    def __init__(self, x, y):
+        super().__init__(x, y, char='H', color=(200, 200, 200), hitpoints=20, attack_power=5)
+    
+    def move(self, game_map):
+        self.movement_counter += 1
+        if self.movement_counter >= 5:  # Ghosts change direction less frequently
+            self.direction = self.get_random_direction()
+            self.movement_counter = 0
+
+        new_x, new_y = self.x + self.direction[0], self.y + self.direction[1]
+        if 0 <= new_x < MAP_SIZE[0] and 0 <= new_y < MAP_SIZE[1]:
+            self.x, self.y = new_x, new_y  # Ghosts can move through walls
+
+Filename: player.py
+Content:
+# player.py
+from constants import MAP_SIZE
+
+class Player:
+    def __init__(self, start_pos):
+        self.pos = list(start_pos)
+        self.char = '@'
+        self.color = (255, 255, 255)  # White color for the player
+        self.hitpoints = 100
+        self.max_hitpoints = 100
+        self.attack_power = 10
+
+    def move(self, dx, dy, game_map):
+        new_pos = [self.pos[0] + dx, self.pos[1] + dy]
+        if (0 <= new_pos[0] < MAP_SIZE[0] and 
+            0 <= new_pos[1] < MAP_SIZE[1] and 
+            not game_map.is_wall(new_pos[0], new_pos[1])):
+            self.pos = new_pos
+
+    def take_damage(self, damage):
+        self.hitpoints = max(0, self.hitpoints - damage)
+
+    def is_alive(self):
+        return self.hitpoints > 0
+
+Filename: prep_ai.py
+Content:
+import os
+import argparse
+
+def combine_py_files_to_txt(folder_path, output_file):
+    with open(output_file, 'w') as outfile:
+        for filename in os.listdir(folder_path):
+            if filename.endswith('.py'):
+                file_path = os.path.join(folder_path, filename)
+                with open(file_path, 'r') as infile:
+                    outfile.write(f"Filename: {filename}\n")
+                    outfile.write("Content:\n")
+                    outfile.write(infile.read())
+                    outfile.write("\n\n")  # Separate files by two newlines
+
+if __name__ == "__main__":
+    default_folder_path = os.path.dirname(os.path.abspath(__file__))
+    default_output_file = 'code.txt'
+    
+    parser = argparse.ArgumentParser(description='Combine all .py files in a folder into a single .txt file.')
+    parser.add_argument('folder_path', nargs='?', default=default_folder_path, type=str, help='The path to the folder containing .py files. Defaults to the script\'s directory.')
+    parser.add_argument('output_file', nargs='?', default=default_output_file, type=str, help='The output .txt file name. Defaults to "code.txt".')
+    
+    args = parser.parse_args()
+    
+    combine_py_files_to_txt(args.folder_path, args.output_file)
+
+
+Filename: rendering.py
+Content:
+# rendering.py
+import pygame
+from constants import GRID_CELL_SIZE, BLUE, RED, BLACK, MAP_SIZE
+
+def get_camera_offset(player_pos, window_size):
+    offset_x = player_pos[0] * GRID_CELL_SIZE - window_size[0] // 2
+    offset_y = player_pos[1] * GRID_CELL_SIZE - window_size[1] // 2
+    offset_x = max(0, min(offset_x, MAP_SIZE[0] * GRID_CELL_SIZE - window_size[0]))
+    offset_y = max(0, min(offset_y, MAP_SIZE[1] * GRID_CELL_SIZE - window_size[1]))
+    return offset_x, offset_y
+
+def draw_game(surface, game_map, player, camera_offset):
+    surface.fill(BLACK)
+    start_x = max(0, camera_offset[0] // GRID_CELL_SIZE)
+    end_x = min(MAP_SIZE[0], (camera_offset[0] + surface.get_width()) // GRID_CELL_SIZE + 1)
+    start_y = max(0, camera_offset[1] // GRID_CELL_SIZE)
+    end_y = min(MAP_SIZE[1], (camera_offset[1] + surface.get_height()) // GRID_CELL_SIZE + 1)
+
+    for x in range(start_x, end_x):
+        for y in range(start_y, end_y):
+            if game_map.is_wall(x, y):
+                pygame.draw.rect(surface, BLUE, (
+                    x * GRID_CELL_SIZE - camera_offset[0],
+                    y * GRID_CELL_SIZE - camera_offset[1],
+                    GRID_CELL_SIZE, GRID_CELL_SIZE
+                ))
+            elif game_map.is_stairs(x, y):
+                stairs_char = game_map.get_stairs_char(x, y)
+                color = (255, 255, 0)  # Yellow color for stairs
+                if stairs_char == '<':
+                    pygame.draw.polygon(surface, color, [
+                        ((x + 0.5) * GRID_CELL_SIZE - camera_offset[0], (y + 0.2) * GRID_CELL_SIZE - camera_offset[1]),
+                        ((x + 0.2) * GRID_CELL_SIZE - camera_offset[0], (y + 0.8) * GRID_CELL_SIZE - camera_offset[1]),
+                        ((x + 0.8) * GRID_CELL_SIZE - camera_offset[0], (y + 0.8) * GRID_CELL_SIZE - camera_offset[1])
+                    ])
+                elif stairs_char == '>':
+                    pygame.draw.polygon(surface, color, [
+                        ((x + 0.5) * GRID_CELL_SIZE - camera_offset[0], (y + 0.8) * GRID_CELL_SIZE - camera_offset[1]),
+                        ((x + 0.2) * GRID_CELL_SIZE - camera_offset[0], (y + 0.2) * GRID_CELL_SIZE - camera_offset[1]),
+                        ((x + 0.8) * GRID_CELL_SIZE - camera_offset[0], (y + 0.2) * GRID_CELL_SIZE - camera_offset[1])
+                    ])
+
+    # Draw NPCs
+    for npc in game_map.npcs:
+        pygame.draw.rect(surface, npc.color, (
+            npc.x * GRID_CELL_SIZE - camera_offset[0],
+            npc.y * GRID_CELL_SIZE - camera_offset[1],
+            GRID_CELL_SIZE, GRID_CELL_SIZE
+        ))
+        # Draw NPC character
+        font = pygame.font.Font(None, 24)
+        text = font.render(npc.char, True, BLACK)  # Black text for contrast
+        text_rect = text.get_rect(center=(
+            npc.x * GRID_CELL_SIZE - camera_offset[0] + GRID_CELL_SIZE // 2,
+            npc.y * GRID_CELL_SIZE - camera_offset[1] + GRID_CELL_SIZE // 2
+        ))
+        surface.blit(text, text_rect)
+
+    # Draw player
+    font = pygame.font.Font(None, 24)
+    player_text = font.render(player.char, True, player.color)
+    player_rect = player_text.get_rect(center=(
+        player.pos[0] * GRID_CELL_SIZE - camera_offset[0] + GRID_CELL_SIZE // 2,
+        player.pos[1] * GRID_CELL_SIZE - camera_offset[1] + GRID_CELL_SIZE // 2
+    ))
+    surface.blit(player_text, player_rect)
+
+    # Draw player's hitpoints
+    hp_text = f"HP: {player.hitpoints}/{player.max_hitpoints}"
+    hp_font = pygame.font.Font(None, 32)
+    hp_surface = hp_font.render(hp_text, True, (255, 255, 255))  # White text
+    surface.blit(hp_surface, (10, 10))  # Position in the top-left corner
+
+    # Draw floor number
+    floor_text = f"Floor: {game_map.level}"
+    floor_font = pygame.font.Font(None, 32)
+    floor_surface = floor_font.render(floor_text, True, (255, 255, 255))  # White text
+    floor_rect = floor_surface.get_rect()
+    floor_rect.topright = (surface.get_width() - 10, 10)  # Position in the top-right corner
+    surface.blit(floor_surface, floor_rect)
+
